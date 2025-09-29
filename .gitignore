@@ -1,0 +1,11 @@
+# .NET / VS
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+.vscode/
+*.log
+*.tmp
+# macOS
+.DS_Store
