@@ -22,7 +22,7 @@ namespace Zadatak10
 
             if (string.IsNullOrWhiteSpace(name))
             {
-                Respond.Text(ctx, "Prosledi naziv fajla: /ime.ext", 400);
+                Respond.Text(ctx, "Prosledi naziv fajla: /ime.gif", 400);
                 return;
             }
 
