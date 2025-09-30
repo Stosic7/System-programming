@@ -6,31 +6,37 @@ namespace Zadatak10
 {
     public sealed class WebServer
     {
-        private readonly HttpListener _http = new HttpListener();
-        private readonly RequestRouter _router;
-        private volatile bool _running;
+        private readonly HttpListener httpListener = new HttpListener();
+        private readonly RequestRouter requestRouter;
+        private volatile bool isRunning;
 
         public WebServer(string[] prefixes, RequestRouter router)
         {
             if (prefixes == null || prefixes.Length == 0)
                 throw new ArgumentException("Bar jedan prefix je obavezan.");
 
-            foreach (var p in prefixes) _http.Prefixes.Add(p);
-            _router = router ?? throw new ArgumentNullException(nameof(router));
+            for (int i = 0; i < prefixes.Length; i++)
+            {
+                httpListener.Prefixes.Add(prefixes[i]);
+            }
+
+            if (router == null) throw new ArgumentNullException(nameof(router));
+            requestRouter = router;
         }
 
         public void Start()
         {
-            _http.Start();
-            _running = true;
+            httpListener.Start();
+            isRunning = true;
 
-            while (_running)
+            while (isRunning)
             {
-                HttpListenerContext? ctx = null;
+                HttpListenerContext? context = null;
+
                 try
                 {
                     // blokira dok ne stigne zahtev
-                    ctx = _http.GetContext();
+                    context = httpListener.GetContext();
                 }
                 catch (HttpListenerException)
                 {
@@ -42,28 +48,49 @@ namespace Zadatak10
                     break;
                 }
 
-                if (ctx == null) continue;
-
-                // klasicna nit
-                var t = new Thread(() =>
+                if (context == null)
                 {
-                    try { _router.Handle(ctx); }
-                    catch (Exception ex)
-                    {
-                        try { Respond.Text(ctx, "Internal Server Error: " + ex.Message, 500); }
-                        catch { /* ignore */ }
-                    }
-                });
-                t.IsBackground = true;
-                t.Start();
+                    continue;
+                }
+
+                Thread worker = new Thread(ProcessContext);
+                worker.IsBackground = true;
+                worker.Start(context);
+            }
+        }
+
+        private void ProcessContext(object? state)
+        {
+            HttpListenerContext? context = state as HttpListenerContext;
+            if (context == null) return;
+
+            try
+            {
+                requestRouter.Handle(context);
+            }
+            catch (Exception exception)
+            {
+                try
+                {
+                    Respond.Text(context, "Internal Server Error: " + exception.Message, 500);
+                }
+                catch
+                {
+                    // ignorisi sve izuzete prilikom slanja odgovora
+                }
             }
         }
 
         public void Stop()
         {
-            _running = false;
-            if (_http.IsListening) _http.Stop();
-            _http.Close();
+            isRunning = false;
+
+            if (httpListener.IsListening)
+            {
+                httpListener.Stop();
+            }
+
+            httpListener.Close();
             Console.WriteLine("Server zaustavljen.");
         }
     }

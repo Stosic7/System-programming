@@ -1,31 +1,43 @@
 using System;
-using System.Threading;
 
 namespace Zadatak10
 {
     internal static class Program
     {
+        private static WebServer? runningServer;
+
         private static void Main(string[] args)
         {
-            string root = AppDomain.CurrentDomain.BaseDirectory;
+            string originalRootPath = AppDomain.CurrentDomain.BaseDirectory;
 
-            var router = new RequestRouter(new FileService(root));
-            var server = new WebServer(
-                new[] { "http://localhost:5050/", "http://127.0.0.1:5050/" },
-                router
-            );
+            FileService fileService = new FileService(originalRootPath);
+            RequestRouter requestRouter = new RequestRouter(fileService);
 
-            Console.WriteLine("Server startuje na http://localhost:5050/");
-            Console.WriteLine("Root: " + root);
-            Console.WriteLine("Pritisni Ctrl+C za stop.");
-
-            Console.CancelKeyPress += (s, e) =>
+            string[] serverPrefixes = new string[]
             {
-                e.Cancel = true;
-                server.Stop();
+                "http://localhost:5050/",
+                "http://127.0.0.1:5050/"
             };
 
-            server.Start(); // blokira nit
+            runningServer = new WebServer(serverPrefixes, requestRouter);
+
+            Console.WriteLine("Server startuje na http://localhost:5050/");
+            Console.WriteLine("Root: " + originalRootPath);
+            Console.WriteLine("Pritisni Ctrl+C za stop.");
+
+            Console.CancelKeyPress += OnCancelKeyPress;
+
+            // blokira nit
+            runningServer.Start();
+        }
+
+        private static void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+        {
+            e.Cancel = true;
+            if (runningServer != null)
+            {
+                runningServer.Stop();
+            }
         }
     }
 }

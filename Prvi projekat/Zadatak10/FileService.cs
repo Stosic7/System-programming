@@ -1,26 +1,33 @@
 using System;
 using System.IO;
-using System.Linq;
 
 namespace Zadatak10
 {
     public sealed class FileService
     {
-        private readonly string _root;
+        private readonly string originalRootPath;
 
-        public FileService(string root)
+        public FileService(string rootPath)
         {
-            if (string.IsNullOrWhiteSpace(root)) throw new ArgumentException("root je obavezan");
-            _root = Path.GetFullPath(root);
+            if (string.IsNullOrWhiteSpace(rootPath))
+                throw new ArgumentException("root je obavezan");
+
+            originalRootPath = Path.GetFullPath(rootPath);
         }
 
         public string? Find(string fileName)
         {
             try
             {
-                return Directory
-                    .GetFiles(_root, fileName, SearchOption.AllDirectories)
-                    .FirstOrDefault();
+                string[] foundFiles = Directory.GetFiles(originalRootPath, fileName, SearchOption.AllDirectories);
+
+                for (int i = 0; i < foundFiles.Length; i++)
+                {
+                    // vraćamo prvi pogodak
+                    return foundFiles[i];
+                }
+
+                return null;
             }
             catch
             {

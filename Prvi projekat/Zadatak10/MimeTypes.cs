@@ -7,12 +7,14 @@ namespace Zadatak10
     {
         public static string FromPath(string path)
         {
-            var ext = Path.GetExtension(path).ToLowerInvariant();
-            return ext switch
+            string extension = Path.GetExtension(path).ToLowerInvariant();
+
+            if (extension == ".gif")
             {
-                ".gif" => "image/gif",
-                _ => "application/octet-stream"
-            };
+                return "image/gif";
+            }
+
+            return "application/octet-stream";
         }
     }
 }

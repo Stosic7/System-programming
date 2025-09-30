@@ -5,41 +5,51 @@ namespace Zadatak10
 {
     public sealed class RequestRouter
     {
-        private readonly FileService _files;
+        private readonly FileService fileService;
 
-        public RequestRouter(FileService files) => _files = files ?? throw new ArgumentNullException(nameof(files));
-
-        public void Handle(HttpListenerContext ctx)
+        public RequestRouter(FileService files)
         {
-            if (ctx.Request.HttpMethod != "GET")
+            if (files == null) throw new ArgumentNullException(nameof(files));
+            fileService = files;
+        }
+
+        public void Handle(HttpListenerContext context)
+        {
+            if (context.Request.HttpMethod != "GET")
             {
-                Respond.Text(ctx, "Method Not Allowed", 405);
+                Respond.Text(context, "Method Not Allowed", 405);
                 return;
             }
 
-            var rawPath = ctx.Request.Url!.AbsolutePath;
-            var name = WebUtility.UrlDecode(rawPath).TrimStart('/');
-
-            if (string.IsNullOrWhiteSpace(name))
+            if (context.Request.Url == null)
             {
-                Respond.Text(ctx, "Prosledi naziv fajla: /ime.gif", 400);
+                Respond.Text(context, "Neispravan zahtev.", 400);
                 return;
             }
 
-            if (name.Contains("..") || name.Contains(":") || name.StartsWith("/"))
+            string rawPath = context.Request.Url.AbsolutePath;
+            string requestedName = WebUtility.UrlDecode(rawPath).TrimStart('/');
+
+            if (string.IsNullOrWhiteSpace(requestedName))
             {
-                Respond.Text(ctx, "Zabranjena putanja.", 400);
+                Respond.Text(context, "Prosledi naziv fajla: /ime.gif", 400);
                 return;
             }
 
-            var full = _files.Find(name);
-            if (full == null)
+            if (requestedName.Contains("..") || requestedName.Contains(":") || requestedName.StartsWith("/"))
             {
-                Respond.Text(ctx, $"Fajl '{name}' nije pronađen.", 404);
+                Respond.Text(context, "Zabranjena putanja.", 400);
                 return;
             }
 
-            Respond.SendFile(ctx, full);
+            string? fullPath = fileService.Find(requestedName);
+            if (fullPath == null)
+            {
+                Respond.Text(context, $"Fajl '{requestedName}' nije pronađen.", 404);
+                return;
+            }
+
+            Respond.SendFile(context, fullPath);
         }
     }
 }
