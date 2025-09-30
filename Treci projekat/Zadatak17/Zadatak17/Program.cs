@@ -6,23 +6,35 @@ namespace Zadatak17
 {
     internal static class Program
     {
+        private static CancellationTokenSource? appCancellation;
+
         public static async Task Main(string[] args)
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-            using var cts = new CancellationTokenSource();
-            Console.CancelKeyPress += (s, e) => { e.Cancel = true; cts.Cancel(); };
+            appCancellation = new CancellationTokenSource();
+            Console.CancelKeyPress += OnCancelKeyPress;
 
-            var http = HttpClientFactory.Shared; // singleton
-            var api  = new TheCocktailDbClient(http);
-            var ta   = new TextAnalytics(StopWords.Default);
-            var ui   = new Renderer();
+            HttpClient httpClient = HttpClientFactory.Shared;
+            TheCocktailDbClient cocktailApi = new TheCocktailDbClient(httpClient);
+            TextAnalytics textAnalytics = new TextAnalytics(StopWords.Default);
+            Renderer userInterface = new Renderer();
+            CocktailSearchApp app = new CocktailSearchApp(cocktailApi, textAnalytics, userInterface);
 
-            var app  = new CocktailSearchApp(api, ta, ui);
+            userInterface.Banner();
+            await app.RunInteractiveAsync(appCancellation.Token);
+            userInterface.Goodbye();
 
-            ui.Banner();
-            await app.RunInteractiveAsync(cts.Token);
-            ui.Goodbye();
+            appCancellation.Dispose();
+        }
+
+        private static void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+        {
+            e.Cancel = true;
+            if (appCancellation != null && !appCancellation.IsCancellationRequested)
+            {
+                appCancellation.Cancel();
+            }
         }
     }
 }

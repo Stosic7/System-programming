@@ -10,70 +10,129 @@ namespace Zadatak17
 {
     public sealed class CocktailSearchApp
     {
-        private readonly TheCocktailDbClient _api;
-        private readonly TextAnalytics _ta;
-        private readonly Renderer _ui;
+        private readonly TheCocktailDbClient cocktailApi;
+        private readonly TextAnalytics textAnalytics;
+        private readonly Renderer userInterface;
 
         public CocktailSearchApp(TheCocktailDbClient api, TextAnalytics ta, Renderer ui)
         {
-            _api = api; _ta = ta; _ui = ui;
+            cocktailApi = api;
+            textAnalytics = ta;
+            userInterface = ui;
         }
 
-        public async Task RunInteractiveAsync(CancellationToken ct)
+        public async Task RunInteractiveAsync(CancellationToken cancellationToken)
         {
             await Task.Yield();
 
-            var input = new Subject<string>();
+            Subject<string> inputStream = new Subject<string>();
 
-            var drinksStream =
-                input
-                .Select(s => s.Trim())
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Throttle(TimeSpan.FromMilliseconds(200))
-                .DistinctUntilChanged(StringComparer.OrdinalIgnoreCase)
-                .SelectMany(s =>
-                    Observable.FromAsync(ct2 => _api.SearchByNameAsync(s, ct2))
-                              .Select(drinks => (s, drinks))
-                              .Catch<(string, IReadOnlyList<Drink>), Exception>(_ =>
-                                  Observable.Empty<(string, IReadOnlyList<Drink>)>())
-                );
+            IObservable<(string query, IReadOnlyList<Drink> drinks)> drinksStream =
+                inputStream
+                    .Select(TrimInput)
+                    .Where(IsNotNullOrWhiteSpace)
+                    .Throttle(TimeSpan.FromMilliseconds(200))
+                    .DistinctUntilChanged(StringComparer.OrdinalIgnoreCase)
+                    .SelectMany(query =>
+                        Observable.FromAsync(ct => cocktailApi.SearchByNameAsync(query, ct))
+                                  .Select(drinks => (query, drinks))
+                                  // >>> ključna linija: eksplicitni generici + method group
+                                  .Catch<(string query, IReadOnlyList<Drink> drinks), Exception>(ReturnEmptyOnError)
+                    );
 
-            var sub = drinksStream.Subscribe(pair =>
-            {
-                var query  = pair.Item1;
-                var drinks = pair.Item2;
-
-                _ui.ShowDrinks(query, drinks);
-
-                var tokens = drinks
-                    .Where(d => !string.IsNullOrWhiteSpace(d.strInstructions))
-                    .SelectMany(d => _ta.Tokens(d.strInstructions!));
-
-                var top = tokens
-                    .GroupBy(w => w)
-                    .Select(g => new KeyValuePair<string, int>(g.Key, g.Count()))
-                    .OrderByDescending(kv => kv.Value);
-                    
-                _ui.ShowTopWords(top, 10);
-            },
-            ex => _ui.Error(ex.Message));
+            IDisposable subscription = drinksStream.Subscribe(OnDrinksStreamNext, OnDrinksStreamError);
 
             try
             {
-                while (!ct.IsCancellationRequested)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    _ui.Prompt();
-                    var line = Console.ReadLine();
-                    if (line is null) break;
+                    userInterface.Prompt();
+                    string? line = Console.ReadLine();
+                    if (line == null) break;
                     if (line.Equals("exit", StringComparison.OrdinalIgnoreCase)) break;
-                    input.OnNext(line);
+                    inputStream.OnNext(line);
                 }
             }
             finally
             {
-                input.OnCompleted();
-                sub.Dispose();
+                inputStream.OnCompleted();
+                subscription.Dispose();
             }
+        }
+
+        private static string TrimInput(string s)
+        {
+            return s == null ? string.Empty : s.Trim();
+        }
+
+        private static bool IsNotNullOrWhiteSpace(string s)
+        {
+            return !string.IsNullOrWhiteSpace(s);
+        }
+
+        // >>> potpis sada koristi isti imenovani tuple kao i stream
+        private static IObservable<(string query, IReadOnlyList<Drink> drinks)> ReturnEmptyOnError(Exception _)
+        {
+            return Observable.Empty<(string query, IReadOnlyList<Drink> drinks)>();
+        }
+
+        private static int CompareByValueDescending(KeyValuePair<string, int> a, KeyValuePair<string, int> b)
+        {
+            if (a.Value == b.Value) return 0;
+            return a.Value > b.Value ? -1 : 1;
+        }
+
+        private void OnDrinksStreamNext((string, IReadOnlyList<Drink>) result)
+        {
+            string query = result.Item1;
+            IReadOnlyList<Drink> drinks = result.Item2;
+
+            userInterface.ShowDrinks(query, drinks);
+
+            List<string> allTokens = new List<string>();
+            for (int i = 0; i < drinks.Count; i++)
+            {
+                string? instructions = drinks[i].strInstructions;
+                if (!string.IsNullOrWhiteSpace(instructions))
+                {
+                    string[] tokensArray = textAnalytics.Tokens(instructions!).ToArray();
+                    for (int j = 0; j < tokensArray.Length; j++)
+                    {
+                        allTokens.Add(tokensArray[j]);
+                    }
+                }
+            }
+
+            Dictionary<string, int> freq = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int k = 0; k < allTokens.Count; k++)
+            {
+                string word = allTokens[k];
+                int count;
+                if (freq.TryGetValue(word, out count))
+                {
+                    freq[word] = count + 1;
+                }
+                else
+                {
+                    freq[word] = 1;
+                }
+            }
+
+            List<KeyValuePair<string, int>> freqList = new List<KeyValuePair<string, int>>();
+            string[] keys = freq.Keys.ToArray();
+            for (int x = 0; x < keys.Length; x++)
+            {
+                string key = keys[x];
+                freqList.Add(new KeyValuePair<string, int>(key, freq[key]));
+            }
+            freqList.Sort(CompareByValueDescending);
+
+            userInterface.ShowTopWords(freqList, 10);
+        }
+
+        private void OnDrinksStreamError(Exception ex)
+        {
+            userInterface.Error(ex.Message);
         }
     }
 }

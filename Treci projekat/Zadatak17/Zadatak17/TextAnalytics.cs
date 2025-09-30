@@ -7,27 +7,43 @@ namespace Zadatak17
 {
     public sealed class TextAnalytics
     {
-        private readonly HashSet<string> _stop;
-        private static readonly Regex _tokenize = new(@"[A-Za-z]+", RegexOptions.Compiled);
+        private readonly HashSet<string> stopWordsSet;
+        private static readonly Regex tokenizeRegex = new Regex("[A-Za-z]+", RegexOptions.Compiled);
 
-        public TextAnalytics(HashSet<string> stopWords) => _stop = stopWords;
+        public TextAnalytics(HashSet<string> stopWords)
+        {
+            stopWordsSet = stopWords;
+        }
 
         public IEnumerable<string> Tokens(string text)
         {
-            foreach (Match m in _tokenize.Matches(text ?? string.Empty))
+            MatchCollection matches = tokenizeRegex.Matches(text ?? string.Empty);
+            for (int i = 0; i < matches.Count; i++)
             {
-                var w = m.Value.ToLowerInvariant();
-                if (w.Length > 2 && !_stop.Contains(w)) yield return w;
+                string w = matches[i].Value.ToLowerInvariant();
+                if (w.Length > 2 && !stopWordsSet.Contains(w))
+                {
+                    yield return w;
+                }
             }
+        }
+
+        private static string Identity(string w)
+        {
+            return w;
+        }
+
+        private static IObservable<KeyValuePair<string, int>> ToCount(IGroupedObservable<string, string> group)
+        {
+            return group.Count().Select(c => new KeyValuePair<string, int>(group.Key, c));
         }
 
         public IObservable<KeyValuePair<string, int>> WordCloud(IObservable<string> instructionsStream)
         {
             return instructionsStream
-                .SelectMany(txt => Tokens(txt))          // stream reci
-                .GroupBy(w => w)                         // po reci
-                .SelectMany(g => g.Count()               // prebroj u grupi
-                    .Select(c => new KeyValuePair<string, int>(g.Key, c)));
+                .SelectMany(Tokens)
+                .GroupBy(Identity)
+                .SelectMany(ToCount); 
         }
     }
 }

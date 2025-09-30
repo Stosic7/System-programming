@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
 namespace Zadatak17
 {
     public sealed class Renderer
@@ -11,27 +15,54 @@ namespace Zadatak17
         public void ShowDrinks(string query, IReadOnlyList<Drink> drinks)
         {
             Console.WriteLine($"\n--- Rezultati za \"{query}\" (pronadjeno: {drinks.Count}) ---");
-            if (drinks.Count == 0) { Console.WriteLine("Nema rezultata."); return; }
-
-            foreach (var d in drinks)
+            if (drinks.Count == 0)
             {
-                Console.WriteLine($"\n• {d.strDrink}");
+                Console.WriteLine("Nema rezultata.");
+                return;
+            }
+
+            for (int i = 0; i < drinks.Count; i++)
+            {
+                Drink d = drinks[i];
+                Console.WriteLine("\n• " + d.strDrink);
                 if (!string.IsNullOrWhiteSpace(d.strInstructions))
-                    Console.WriteLine($"  {d.strInstructions}");
+                {
+                    Console.WriteLine("  " + d.strInstructions);
+                }
             }
         }
 
-        public void ShowTopWords(IEnumerable<KeyValuePair<string,int>> freq, int top = 10)
+        public void ShowTopWords(IEnumerable<KeyValuePair<string, int>> freq, int top = 10)
         {
-            var topList = freq.Take(top).ToList();
-            if (topList.Count == 0) { Console.WriteLine("\n(Nema reci za word cloud)"); return; }
+            List<KeyValuePair<string, int>> topList = freq.Take(top).ToList();
+
+            if (topList.Count == 0)
+            {
+                Console.WriteLine("\n(Nema reci za word cloud)");
+                return;
+            }
 
             Console.WriteLine("\n--- Najcesce reci (Top {0}) ---", topList.Count);
-            foreach (var kv in topList) Console.WriteLine($"{kv.Key} - {kv.Value} puta");
+            for (int i = 0; i < topList.Count; i++)
+            {
+                KeyValuePair<string, int> kv = topList[i];
+                Console.WriteLine(kv.Key + " - " + kv.Value + " puta");
+            }
         }
 
-        public void Prompt() => Console.Write("\nUnesi ime koktela: ");
-        public void Goodbye() => Console.WriteLine("\nPozdrav");
-        public void Error(string msg) => Console.WriteLine($"Greska: {msg}");
+        public void Prompt()
+        {
+            Console.Write("\nUnesi ime koktela: ");
+        }
+
+        public void Goodbye()
+        {
+            Console.WriteLine("\nPozdrav");
+        }
+
+        public void Error(string msg)
+        {
+            Console.WriteLine("Greska: " + msg);
+        }
     }
 }

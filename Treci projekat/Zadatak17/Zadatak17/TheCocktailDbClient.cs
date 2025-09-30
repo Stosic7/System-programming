@@ -9,25 +9,51 @@ namespace Zadatak17
 {
     public sealed class TheCocktailDbClient
     {
-        private readonly HttpClient _http;
-        private static readonly JsonSerializerOptions _json = new() { PropertyNameCaseInsensitive = true };
+        private readonly HttpClient httpClient;
+        private static readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
 
-        public TheCocktailDbClient(HttpClient http) => _http = http;
+        public TheCocktailDbClient(HttpClient http)
+        {
+            httpClient = http;
+        }
 
         public async Task<IReadOnlyList<Drink>> SearchByNameAsync(string name, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(name)) return Array.Empty<Drink>();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return Array.Empty<Drink>();
+            }
 
-            var url = $"https://www.thecocktaildb.com/api/json/v1/1/search.php?s={Uri.EscapeDataString(name)}";
+            string url = "https://www.thecocktaildb.com/api/json/v1/1/search.php?s=" + Uri.EscapeDataString(name);
 
-            using var resp = await _http.GetAsync(url, ct).ConfigureAwait(false);
-            resp.EnsureSuccessStatusCode();
+            HttpResponseMessage resp = await httpClient.GetAsync(url, ct).ConfigureAwait(false);
+            try
+            {
+                resp.EnsureSuccessStatusCode();
 
-            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            var data = await JsonSerializer.DeserializeAsync<CocktailResponse>(stream, _json, ct).ConfigureAwait(false);
-
-            var list = data?.Drinks; // List<Drink>?
-            return list is null ? Array.Empty<Drink>() : (IReadOnlyList<Drink>)list;
+                System.IO.Stream stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    CocktailResponse? data = await JsonSerializer.DeserializeAsync<CocktailResponse>(stream, jsonOptions, ct).ConfigureAwait(false);
+                    List<Drink>? list = data?.Drinks;
+                    if (list == null)
+                    {
+                        return Array.Empty<Drink>();
+                    }
+                    return list;
+                }
+                finally
+                {
+                    await stream.DisposeAsync().ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                resp.Dispose();
+            }
         }
     }
 }
