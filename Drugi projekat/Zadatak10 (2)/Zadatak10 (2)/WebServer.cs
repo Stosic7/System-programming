@@ -7,65 +7,83 @@ namespace Zadatak10__2_
 {
     public sealed class WebServer
     {
-        private readonly HttpListener _http = new();
-        private readonly RequestRouter _router;
-        private readonly SemaphoreSlim _limit = new(100);
+        private readonly HttpListener httpListener = new HttpListener();
+        private readonly RequestRouter requestRouter;
+        private readonly SemaphoreSlim concurrencyLimiter = new SemaphoreSlim(100);
 
         public WebServer(string[] prefixes, RequestRouter router)
         {
             if (prefixes == null || prefixes.Length == 0)
                 throw new ArgumentException("Bar jedan prefix je obavezan.");
-            foreach (var p in prefixes) _http.Prefixes.Add(p);
-            _router = router ?? throw new ArgumentNullException(nameof(router));
+
+            for (int i = 0; i < prefixes.Length; i++)
+            {
+                httpListener.Prefixes.Add(prefixes[i]);
+            }
+
+            if (router == null) throw new ArgumentNullException(nameof(router));
+            requestRouter = router;
         }
 
-        public async Task StartAsync(CancellationToken ct)
+        public async Task StartAsync(CancellationToken cancellationToken)
         {
-            _http.Start();
+            httpListener.Start();
 
             try
             {
-                while (!ct.IsCancellationRequested)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    HttpListenerContext ctx;
+                    HttpListenerContext context;
+
                     try
                     {
-                        ctx = await _http.GetContextAsync().ConfigureAwait(false);
+                        context = await httpListener.GetContextAsync().ConfigureAwait(false);
                     }
                     catch (HttpListenerException)
                     {
-                        break;
+                        break; // stop ili zatvaranje
                     }
                     catch (ObjectDisposedException)
                     {
                         break;
                     }
 
-                    _ = HandleOneAsync(ctx, ct);
+                    Task processingTask = HandleOneAsync(context, cancellationToken);
                 }
             }
             finally
             {
-                if (_http.IsListening) _http.Stop();
-                _http.Close();
+                if (httpListener.IsListening)
+                {
+                    httpListener.Stop();
+                }
+
+                httpListener.Close();
             }
         }
 
-        private async Task HandleOneAsync(HttpListenerContext ctx, CancellationToken ct)
+        private async Task HandleOneAsync(HttpListenerContext context, CancellationToken cancellationToken)
         {
-            await _limit.WaitAsync(ct).ConfigureAwait(false);
+            await concurrencyLimiter.WaitAsync(cancellationToken).ConfigureAwait(false);
+
             try
             {
-                await _router.HandleAsync(ctx, ct).ConfigureAwait(false);
+                await requestRouter.HandleAsync(context, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                try { await Respond.TextAsync(ctx, "Internal Server Error: " + ex.Message, 500).ConfigureAwait(false); }
-                catch { /* ignore */ }
+                try
+                {
+                    await Respond.TextAsync(context, "Internal Server Error: " + ex.Message, 500, cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // ignorisi gresku pri slanju odgovora
+                }
             }
             finally
             {
-                _limit.Release();
+                concurrencyLimiter.Release();
             }
         }
     }

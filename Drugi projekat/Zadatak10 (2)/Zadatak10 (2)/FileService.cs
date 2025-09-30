@@ -1,5 +1,5 @@
+using System;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -7,25 +7,56 @@ namespace Zadatak10__2_
 {
     public sealed class FileService
     {
-        private readonly string _root;
-        public FileService(string root) => _root = Path.GetFullPath(root);
+        private readonly string originalRootPath;
 
-        public Task<string?> FindAsync(string fileName, CancellationToken ct)
+        public FileService(string rootPath)
         {
-            return Task.Run(() =>
+            if (string.IsNullOrWhiteSpace(rootPath))
+                throw new ArgumentException("rootPath je obavezan.");
+
+            originalRootPath = Path.GetFullPath(rootPath);
+        }
+
+        public Task<string?> FindAsync(string fileName, CancellationToken cancellationToken)
+        {
+            FindState state = new FindState { FileName = fileName, Token = cancellationToken };
+
+            return Task.Factory.StartNew(
+                FindInternalFromState,
+                state,
+                cancellationToken,
+                TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default
+            );
+        }
+
+        private sealed class FindState
+        {
+            public string FileName = string.Empty;
+            public CancellationToken Token;
+        }
+
+        private string? FindInternalFromState(object? boxedState)
+        {
+            FindState state = (FindState)boxedState!;
+            state.Token.ThrowIfCancellationRequested();
+
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                try
+                string[] found = Directory.GetFiles(originalRootPath, state.FileName, SearchOption.AllDirectories);
+
+                for (int i = 0; i < found.Length; i++)
                 {
-                    return Directory
-                        .GetFiles(_root, fileName, SearchOption.AllDirectories)
-                        .FirstOrDefault();
+                    // Vracamo prvi pogodak
+                    return found[i];
                 }
-                catch
-                {
-                    return null;
-                }
-            }, ct);
+
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

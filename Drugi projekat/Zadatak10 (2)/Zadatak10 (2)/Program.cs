@@ -6,29 +6,40 @@ namespace Zadatak10__2_
 {
     internal static class Program
     {
+        private static CancellationTokenSource? appCancellation;
+        private static WebServer? runningServer;
+
         public static async Task Main(string[] args)
         {
-            var cts = new CancellationTokenSource();
+            appCancellation = new CancellationTokenSource();
 
-            Console.CancelKeyPress += (s, e) =>
-            {
-                e.Cancel = true;
-                cts.Cancel();
-            };
+            Console.CancelKeyPress += OnCancelKeyPress;
 
-            string root = AppDomain.CurrentDomain.BaseDirectory;
-            var router = new RequestRouter(new FileService(root));
-            var server = new WebServer(
-                new[] { "http://localhost:5050/", "http://127.0.0.1:5050/" },
-                router
-            );
+            string originalRootPath = AppDomain.CurrentDomain.BaseDirectory;
+
+            FileService fileService = new FileService(originalRootPath);
+            RequestRouter requestRouter = new RequestRouter(fileService);
+            string[] prefixes = new string[] { "http://localhost:5050/", "http://127.0.0.1:5050/" };
+
+            runningServer = new WebServer(prefixes, requestRouter);
 
             Console.WriteLine("Drugi projekat – async varijanta");
             Console.WriteLine("URL: http://localhost:5050/");
-            Console.WriteLine("Root: " + root);
+            Console.WriteLine("Root: " + originalRootPath);
 
-            await server.StartAsync(cts.Token);
+            await runningServer.StartAsync(appCancellation.Token);
+
             Console.WriteLine("Server ugašen.");
+        }
+
+        private static void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+        {
+            e.Cancel = true;
+            CancellationTokenSource? localCts = appCancellation;
+            if (localCts != null && !localCts.IsCancellationRequested)
+            {
+                localCts.Cancel();
+            }
         }
     }
 }

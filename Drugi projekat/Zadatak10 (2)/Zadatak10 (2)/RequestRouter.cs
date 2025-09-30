@@ -6,40 +6,50 @@ namespace Zadatak10__2_
 {
     public sealed class RequestRouter
     {
-        private readonly FileService _files;
-        public RequestRouter(FileService files) => _files = files;
+        private readonly FileService fileService;
 
-        public async Task HandleAsync(HttpListenerContext ctx, CancellationToken ct)
+        public RequestRouter(FileService fileService)
         {
-            if (ctx.Request.HttpMethod != "GET")
+            this.fileService = fileService;
+        }
+
+        public async Task HandleAsync(HttpListenerContext httpContext, CancellationToken cancellationToken)
+        {
+            if (httpContext.Request.HttpMethod != "GET")
             {
-                await Respond.TextAsync(ctx, "Method Not Allowed", 405).ConfigureAwait(false);
+                await Respond.TextAsync(httpContext, "Method Not Allowed", 405, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            var raw = ctx.Request.Url!.AbsolutePath;
-            var name = WebUtility.UrlDecode(raw).TrimStart('/');
-
-            if (string.IsNullOrWhiteSpace(name))
+            if (httpContext.Request.Url == null)
             {
-                await Respond.TextAsync(ctx, "Prosledi naziv fajla: /ime.gif", 400).ConfigureAwait(false);
+                await Respond.TextAsync(httpContext, "Neispravan zahtev.", 400, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            if (name.Contains("..") || name.Contains(":") || name.StartsWith("/"))
+            string rawPath = httpContext.Request.Url.AbsolutePath;
+            string requestedName = WebUtility.UrlDecode(rawPath).TrimStart('/');
+
+            if (string.IsNullOrWhiteSpace(requestedName))
             {
-                await Respond.TextAsync(ctx, "Zabranjena putanja.", 400).ConfigureAwait(false);
+                await Respond.TextAsync(httpContext, "Prosledi naziv fajla: /ime.gif", 400, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            var path = await _files.FindAsync(name, ct).ConfigureAwait(false);
-            if (path is null)
+            if (requestedName.Contains("..") || requestedName.Contains(":") || requestedName.StartsWith("/"))
             {
-                await Respond.TextAsync(ctx, $"Fajl '{name}' nije pronadjen.", 404).ConfigureAwait(false);
+                await Respond.TextAsync(httpContext, "Zabranjena putanja.", 400, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            await Respond.FileAsync(ctx, path, ct).ConfigureAwait(false);
+            string? fullPath = await fileService.FindAsync(requestedName, cancellationToken).ConfigureAwait(false);
+            if (fullPath == null)
+            {
+                await Respond.TextAsync(httpContext, "Fajl '" + requestedName + "' nije pronadjen.", 404, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            await Respond.FileAsync(httpContext, fullPath, cancellationToken).ConfigureAwait(false);
         }
     }
 }
